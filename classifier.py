@@ -154,19 +154,11 @@ class ImageClassifier:
             dest_path = os.path.join(dest_folder, new_filename)
 
             if move_files:
-                if not os.path.exists(image_path):  # Add this block
-                    print(f"File not found: {os.path.abspath(image_path)}")
-                    continue
-
-                print(f"Moving {os.path.abspath(image_path)} to {os.path.abspath(dest_path)}")
                 os.rename(image_path, dest_path)
             else:
-                if not os.path.exists(image_path):  # Add this block
-                    print(f"File not found: {os.path.abspath(image_path)}")
-                    continue
-
                 shutil.copy2(image_path, dest_path)
-                print(f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
+
+            print(f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
 
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)
