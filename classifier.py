@@ -2,6 +2,7 @@ import os
 import urllib.request
 import shutil
 from PIL import Image
+import time
 from torchvision import transforms
 import torch
 from tqdm import tqdm
@@ -104,22 +105,30 @@ class ImageClassifier:
 
             if not os.path.exists(os.path.join(folder, filename_underscore)) and \
                not os.path.exists(os.path.join(folder, filename_no_underscore)):
-                return filename_underscore
+                return filename_no_underscore
 
             i += 1
-
 
     def convert_to_jpeg(self, image_path):
         file_ext = os.path.splitext(image_path)[1].lower()
 
         input_image = Image.open(image_path)
+        image_format = input_image.format.lower()
 
-        if input_image.format.lower() != 'jpg':
-            new_image_path = os.path.splitext(image_path)[0] + '.jpg'
-            input_image.convert('RGB').save(new_image_path, 'JPEG', quality=90)
+        if file_ext == '.jpg' and image_format == 'jpeg':
+            return image_path, input_image
+
+        else:
+            filename = os.path.basename(image_path)
+            new_image_path = os.path.join('photos', 'converted', os.path.splitext(filename)[0] + '.jpg')
+            os.makedirs(os.path.dirname(new_image_path), exist_ok=True)
+
+            if image_format != 'jpeg':
+                input_image = input_image.convert('RGB')
+            input_image.save(new_image_path, 'JPEG', quality=90)
             os.remove(image_path)
             return new_image_path, input_image
-        return image_path, input_image
+
 
     def process_images(self, input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True):
         image_files = self.get_image_files_recursively(input_folder)
