@@ -147,10 +147,10 @@ class ImageClassifier:
                 os.makedirs(dest_folder)
 
             if check_duplicates and self.is_duplicate(input_image, output_folder, label):
-                print(f"Found duplicate: {image_path}")
+                print('\n',f"Found duplicate: {image_path}")
                 if delete_duplicates:
                     os.remove(image_path)
-                    print(f"Deleted duplicate: {image_path}")
+                    print('\n',f"Deleted duplicate: {image_path}")
                 continue
 
             if rename_files:
@@ -166,7 +166,7 @@ class ImageClassifier:
             else:
                 shutil.copy2(image_path, dest_path)
 
-            print(f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
+            print('\n', f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
 
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)
@@ -181,11 +181,11 @@ class ImageClassifier:
                 if len(folder_files) == 1 and folder_files[0] == '.DS_Store':
                     ds_store_path = os.path.join(dir_path, '.DS_Store')
                     os.remove(ds_store_path)
-                    print(f"Deleted .DS_Store file: {ds_store_path}")
+                    print('\n',f"Deleted .DS_Store file: {ds_store_path}")
 
                 if not os.listdir(dir_path):
                     os.rmdir(dir_path)
-                    print(f"Deleted empty folder: {dir_path}")
+                    print('\n',f"Deleted empty folder: {dir_path}")
 
 
 
