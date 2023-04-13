@@ -2,7 +2,6 @@ import os
 import urllib.request
 import shutil
 from PIL import Image
-import time
 from torchvision import transforms
 import torch
 from tqdm import tqdm
@@ -33,6 +32,7 @@ class ImageClassifier:
 
         self.custom_mapping = custom_mapping if custom_mapping else {}
 
+
     def get_image_files_recursively(self, input_folder):
         image_files = []
         for root, _, files in os.walk(input_folder):
@@ -42,12 +42,21 @@ class ImageClassifier:
         return image_files
 
 
+    def convert_to_rgb(self, image):
+        if image.mode != "RGB":
+            return image.convert("RGB")
+        return image
+
 
     def classify_image(self, image_path, input_image=None):
         if not input_image:
-            input_image = Image.open(image_path)
+            with Image.open(image_path) as input_image:
+                input_image = self.convert_to_rgb(input_image)
+                input_tensor = self.preprocess(input_image)
+        else:
+            input_image = self.convert_to_rgb(input_image)
+            input_tensor = self.preprocess(input_image)
 
-        input_tensor = self.preprocess(input_image)
         input_batch = input_tensor.unsqueeze(0)
 
         with torch.no_grad():
@@ -62,19 +71,10 @@ class ImageClassifier:
         return category, top1_prob.item()
 
 
-        with torch.no_grad():
-            output = self.model(input_batch)
-
-        probabilities = torch.nn.functional.softmax(output[0], dim=0)
-        top1_prob, top1_catid = torch.topk(probabilities, 1)
-
-        if custom_mapping:
-            return custom_mapping[self.categories[top1_catid[0]]], top1_prob[0].item()
-        else:
-            return self.categories[top1_catid[0]], top1_prob[0].item()
-
-
     def calculate_image_similarity(self, img1, img2):
+        img1 = self.convert_to_rgb(img1)
+        img2 = self.convert_to_rgb(img2)
+
         img1_preprocessed = self.preprocess(img1).mean(dim=0).numpy()
         img2_preprocessed = self.preprocess(img2).mean(dim=0).numpy()
 
@@ -86,15 +86,19 @@ class ImageClassifier:
         if not os.path.exists(dest_folder):
             return False
 
+        image = self.convert_to_rgb(image)
+
         for existing_file in os.listdir(dest_folder):
             if existing_file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')) and not existing_file.startswith('.'):
                 existing_img_path = os.path.join(dest_folder, existing_file)
                 with Image.open(existing_img_path) as existing_img:
+                    existing_img = self.convert_to_rgb(existing_img)
                     similarity = self.calculate_image_similarity(image, existing_img)
                     if similarity >= threshold:
                         return True
 
         return False
+
 
     def get_next_filename(self, folder, prefix, ext):
         i = 1
@@ -107,6 +111,7 @@ class ImageClassifier:
                 return filename_no_underscore
 
             i += 1
+
 
     def convert_to_jpeg(self, image_path):
         file_ext = os.path.splitext(image_path)[1].lower()
@@ -122,8 +127,7 @@ class ImageClassifier:
             new_image_path = os.path.join('photos', 'converted', os.path.splitext(filename)[0] + '.jpg')
             os.makedirs(os.path.dirname(new_image_path), exist_ok=True)
 
-            if image_format != 'jpeg':
-                input_image = input_image.convert('RGB')
+            input_image = self.convert_to_rgb(input_image)
             input_image.save(new_image_path, 'JPEG', quality=90)
             os.remove(image_path)
             return new_image_path, input_image
@@ -140,6 +144,7 @@ class ImageClassifier:
             else:
                 input_image = Image.open(image_path)
 
+
             label, _ = self.classify_image(image_path, input_image=input_image)
             dest_folder = os.path.join(output_folder, label)
 
@@ -147,10 +152,10 @@ class ImageClassifier:
                 os.makedirs(dest_folder)
 
             if check_duplicates and self.is_duplicate(input_image, output_folder, label):
-                print('\n',f"Found duplicate: {image_path}")
+                print(f"Found duplicate: {image_path}")
                 if delete_duplicates:
                     os.remove(image_path)
-                    print('\n',f"Deleted duplicate: {image_path}")
+                    print(f"Deleted duplicate: {image_path}")
                 continue
 
             if rename_files:
@@ -171,21 +176,18 @@ class ImageClassifier:
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)
 
-
     def delete_empty_folders(self, input_folder):
         for root, dirs, files in os.walk(input_folder, topdown=False):
             for dir in dirs:
                 dir_path = os.path.join(root, dir)
                 folder_files = os.listdir(dir_path)
-
                 if len(folder_files) == 1 and folder_files[0] == '.DS_Store':
                     ds_store_path = os.path.join(dir_path, '.DS_Store')
                     os.remove(ds_store_path)
-                    print('\n',f"Deleted .DS_Store file: {ds_store_path}")
+                    print(f"Deleted .DS_Store file: {ds_store_path}")
 
                 if not os.listdir(dir_path):
                     os.rmdir(dir_path)
-                    print('\n',f"Deleted empty folder: {dir_path}")
-
+                    print(f"Deleted empty folder: {dir_path}")
 
 
