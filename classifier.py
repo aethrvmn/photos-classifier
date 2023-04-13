@@ -2,7 +2,6 @@ import os
 import urllib.request
 import shutil
 from PIL import Image
-import pyheif
 from torchvision import transforms
 import torch
 from tqdm import tqdm
@@ -113,19 +112,9 @@ class ImageClassifier:
     def convert_to_jpeg(self, image_path):
         file_ext = os.path.splitext(image_path)[1].lower()
 
-        if file_ext == '.heic':
-            heif_file = pyheif.read(image_path)
-            input_image = Image.frombytes(
-                heif_file.mode,
-                heif_file.size,
-                heif_file.data,
-                "raw",
-                heif_file.mode,
-            )
-        else:
-            input_image = Image.open(image_path)
+        input_image = Image.open(image_path)
 
-        if input_image.format.lower() != 'jpeg':
+        if input_image.format.lower() != 'jpg':
             new_image_path = os.path.splitext(image_path)[0] + '.jpg'
             input_image.convert('RGB').save(new_image_path, 'JPEG', quality=90)
             os.remove(image_path)
@@ -136,10 +125,12 @@ class ImageClassifier:
         image_files = self.get_image_files_recursively(input_folder)
 
         for image_path in tqdm(image_files):
-            input_image = Image.open(image_path)
+            file_ext = os.path.splitext(image_path)[1].lower()
 
             if convert_to_jpeg:
                 image_path, input_image = self.convert_to_jpeg(image_path)
+            else:
+                input_image = Image.open(image_path)
 
             label, _ = self.classify_image(image_path, input_image=input_image)
             dest_folder = os.path.join(output_folder, label)
@@ -174,12 +165,12 @@ class ImageClassifier:
                     print(f"File not found: {os.path.abspath(image_path)}")
                     continue
 
-
                 shutil.copy2(image_path, dest_path)
                 print(f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
 
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)
+
 
     def delete_empty_folders(self, input_folder):
         for root, dirs, files in os.walk(input_folder, topdown=False):
