@@ -1,0 +1,6 @@
+numpy==1.22.3
+Pillow==9.5.0
+scikit-image
+torch==2.0.0
+torchvision==0.15.1
+tqdm==4.63.1

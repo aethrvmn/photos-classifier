@@ -1,89 +1,64 @@
 
 # Photo Classifier
 
-A Python script that classifies and sorts photos into folders based on their content using the ResNeXt-101 32x48d WSL model. The model is pretrained on ImageNet, and you can customize the classification by providing a custom mapping of ImageNet classes to your desired categories.
+A Python-based command-line tool for organizing and managing a collection of images. This tool classifies images based on their content, checks for duplicates, and organizes them into folders according to their categories. It supports various image formats, such as PNG, JPEG, TIFF, BMP, and GIF.
+
+## Features
+
+-   Classify images using a pre-trained DenseNet-121 model
+-   Organize images into folders based on their categories
+-   Check for and handle duplicate images
+-   Rename image files based on their categories
+-   Convert non-JPEG images to JPEG format
+-   Remove empty folders
 
 ## Requirements
 
--   PyTorch
--   torchvision
--   PIL (Pillow)
--   tqdm
+-   Python 3.7+
+-   `torch` and `torchvision` packages
+-   `Pillow` package
+-   `numpy` package
+-   `scikit-image` package
+-   `pyheif` package (optional, for HEIC image support)
+-   `tqdm` package (optional, for progress bars)
 
-## Installation
-1.  Install the required libraries using pip:
+You can install the required packages using `pip`:
 
 ```bash
-pip install torch torchvision pillow tqdm
+pip install torch torchvision Pillow numpy scikit-image pyheif tqdm
 ```
-
-2.  Download the `photo_classifier.py` script.
 
 ## Usage
 
-1.  Edit the `photo_classifier.py` script to set the `input_folder` and `output_folder` variables to the paths of your input images and the desired output folder, respectively.
-2.  Update the `custom_mapping` dictionary in the script to map the ImageNet labels to your custom categories.
-3.  Run the script:
-
-```bash
-python photo_classifier.py
-```
-
-4. Organize your input images into a folder. This folder can have subfolders with images as well. The script will search for images recursively.
-
-5.  Run the script:
-
-```bash
-python photo_classifier.py
-```
-
-The script will classify the images and move them to the specified output folder, organizing them into subfolders based on the custom categories defined in `custom_mapping`.
-
-## Customization
-
-You can customize the image classifier by using different pre-trained models available in PyTorch. To use a different model, replace the model loading line in the `photo_classifier.py` script:
+First, create a Python script (e.g., `classify_photos.py`) that imports the `ImageClassifier` class from the provided code file (e.g., `classifier.py`), and then create an instance of the class. After that, call the `process_images` method with the desired input and output folder paths.
 
 ```python
-model = torch.hub.load('facebookresearch/WSL-Images', 'resnext101_32x48d_wsl')
-```
+from classifier import ImageClassifier
 
-### Custom Labels
+input_folder = 'photos/input'
+output_folder = 'photos/output'
 
-To create your own custom labels using a dictionary, update the `custom_mapping` dictionary in the `photo_classifier.py` script. The keys in the dictionary represent your custom labels, while the values are lists of ImageNet labels that correspond to the custom label.
-
-For example, if you want to create custom labels for "sea", "forest", "animal", "people", "portrait", and "city", you can define the `custom_mapping` as follows:
-
-```python
-custom_mapping = {
-    "sea": ["beach", "seashore", "coast", "ocean", "sea"],
-    "forest": ["forest", "wood", "woods", "jungle"],
-    "animal": ["dog", "cat", "bird", "fish", "lion", "tiger", "elephant", "zebra"],
-    "people": ["person", "man", "woman", "boy", "girl"],
-    "portrait": ["face", "head", "selfie"],
-    "city": ["cityscape", "skyscraper", "buildings", "street"]
+# Define your custom labels here
+custom_labels = {
+    # Add your custom mappings here
 }
+
+classifier = ImageClassifier(custom_mapping=custom_labels)
+classifier.process_images(input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True)
 ```
-Please note that this example contains only a small subset of possible ImageNet labels. You'll need to expand this list based on the actual labels from ImageNet that you want to map to your custom categories.
 
-## Notes
+You can customize the behavior of the `process_images` method using the following optional parameters:
 
--   The script ignores hidden files and non-image files.
--   The input images will be moved, not copied, to the output folder.
--   If you want to use a different model, replace the `model` variable with the desired model and adjust the preprocessing steps accordingly.
+-   `rename_files`: Set to `True` (default) to rename image files based on their categories, or `False` to keep the original filenames.
+-   `check_duplicates`: Set to `True` (default) to check for and handle duplicate images, or `False` to skip duplicate checking.
+-   `move_files`: Set to `True` (default) to move image files from the input folder to the output folder, or `False` to copy them instead.
+-   `delete_duplicates`: Set to `True` (default) to delete duplicate images, or `False` to keep them.
+-   `delete_empty_folders`: Set to `True` (default) to delete empty folders in the input directory, or `False` to keep them.
+-   `convert_to_jpeg`: Set to `True` (default) to convert non-JPEG images to JPEG format, or `False` to keep the original formats.
 
-## Limitations
+## Customizations
 
-The accuracy of the classification and organization depends on the pre-trained model used and the similarity of your images to the ImageNet dataset. You might need to fine-tune the model or use a different pre-trained model for better accuracy in some cases.
-
-
-
-
-
-## Usage
-
-1. Organize your input images into a folder. This folder can have subfolders with images as well. The script will search for images recursively.
-
-2. Update the `custom_mapping` dictionary in the script to map ImageNet classes to your desired categories. For example:
+You can create a custom mapping of categories by providing a dictionary to the `ImageClassifier` constructor:
 
 ```python
 custom_mapping = {
@@ -95,18 +70,16 @@ custom_mapping = {
     "city": ["cityscape", "skyscraper", "buildings", "street"],
     "nature": ["cliff", "alp", "barn", "box_turtle"]
 }
+
+classifier = ImageClassifier(custom_mapping=custom_mapping)
 ```
 
-3.  Set the `input_folder` and `output_folder` variables in the script:
+With this custom mapping, the script will use the new category names instead of the original ones provided by the DenseNet-121 model.
 
-python
+## Troubleshooting
 
-`input_folder = 'photos/input'
-output_folder = 'photos/output'`
+If you encounter issues related to SSL certificate verification, you can disable SSL verification by passing `ssl_unverified=True` to the `ImageClassifier` constructor:
 
-4.  Run the script:
-
-`python photo_classifier.py`
-
-The script will classify the images and move them to the specified output folder, organizing them into subfolders based on the custom categories defined in `custom_mapping`.
-
+```python
+classifier = ImageClassifier(ssl_unverified=True)
+```

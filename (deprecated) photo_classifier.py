@@ -5,6 +5,8 @@ from torchvision import transforms
 import torch
 from tqdm import tqdm
 import ssl
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
 
 if hasattr(ssl, '_create_unverified_context'):
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -57,6 +59,39 @@ def classify_image(image_path, custom_mapping=None):
     else:
         return categories[top1_catid[0]], top1_prob[0].item()
 
+def calculate_image_similarity(img1, img2):
+    img1_preprocessed = preprocess(img1).mean(dim=0).numpy()
+    img2_preprocessed = preprocess(img2).mean(dim=0).numpy()
+
+    return ssim(img1_preprocessed, img2_preprocessed, data_range=img1_preprocessed.max() - img1_preprocessed.min())
+
+
+
+
+def is_duplicate(image, output_folder, label, threshold=0.95):
+    dest_folder = os.path.join(output_folder, label)
+
+    if not os.path.exists(dest_folder):
+        return False
+
+    for existing_image in os.listdir(dest_folder):
+        existing_image_path = os.path.join(dest_folder, existing_image)
+        with Image.open(existing_image_path) as existing_img:
+            similarity = calculate_image_similarity(image, existing_img)
+            if similarity >= threshold:
+                return True
+
+    return False
+
+def get_next_filename(dest_folder, label, ext):
+    i = 1
+    while True:
+        new_filename = f"{label}{i}.{ext}"
+        new_filepath = os.path.join(dest_folder, new_filename)
+        if not os.path.exists(new_filepath):
+            return new_filename
+        i += 1
+
 input_folder = 'photos/input'
 output_folder = 'photos/output'
 
@@ -69,6 +104,13 @@ for image_path in tqdm(image_files):
     if not os.path.exists(dest_folder):
         os.makedirs(dest_folder)
 
-    dest_path = os.path.join(dest_folder, os.path.basename(image_path))
-    os.rename(image_path, dest_path)
-    print(f'Moved {image_path} to {dest_path}')
+    with Image.open(image_path) as input_image:
+        if is_duplicate(input_image, output_folder, label):
+            print(f"Skipping duplicate: {image_path}")
+            continue
+
+        ext = os.path.splitext(image_path)[1].lower().lstrip('.')
+        new_filename = get_next_filename(dest_folder, label, ext)
+        dest_path = os.path.join(dest_folder, new_filename)
+        os.rename(image_path, dest_path)
+        print(f'Moved {image_path} to {dest_path}')
