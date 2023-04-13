@@ -9,8 +9,7 @@ from tqdm import tqdm
 import ssl
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
-from torchvision import models
-from torchvision.models.densenet import DenseNet121_Weights
+import timm
 
 
 class ImageClassifier:
@@ -19,7 +18,7 @@ class ImageClassifier:
         if ssl_unverified and hasattr(ssl, '_create_unverified_context'):
             ssl._create_default_https_context = ssl._create_unverified_context
 
-        self.model = models.densenet121(weights=DenseNet121_Weights.DEFAULT)
+        self.model = timm.create_model('vit_base_patch16_224', pretrained=True)
         self.model.eval()
 
         self.labels_url = 'https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt'
