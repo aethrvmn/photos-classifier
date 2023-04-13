@@ -131,3 +131,5 @@ dmypy.json
 # Photos Folder
 
 photos/
+
+.DS_Store
