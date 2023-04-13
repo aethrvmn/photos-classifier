@@ -1,16 +1,23 @@
-import torch
 import os
-import shutil
-import json
+import urllib.request
 from PIL import Image
 from torchvision import transforms
+import torch
+from tqdm import tqdm
+import ssl
 
-# Load the pre-trained ResNet-18 model
-model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+if hasattr(ssl, '_create_unverified_context'):
+    ssl._create_default_https_context = ssl._create_unverified_context
 
-# Set the model to evaluation mode
+# Load the pre-trained model
+model = torch.hub.load('facebookresearch/WSL-Images', 'resnext101_32x48d_wsl')
 model.eval()
 
+# Load ImageNet labels
+labels_url = 'https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt'
+categories = [s.strip().decode('utf-8') for s in urllib.request.urlopen(labels_url).readlines()]
+
+# Image preprocessing
 preprocess = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -19,60 +26,49 @@ preprocess = transforms.Compose([
 ])
 
 custom_mapping = {
-    "sea": ["beach", "seashore", "coast", "ocean", "sea"],
-    "forest": ["forest", "wood", "woods", "jungle"],
-    "animal": ["dog", "cat", "bird", "fish", "lion", "tiger", "elephant", "zebra"],
-    "people": ["person", "man", "woman", "boy", "girl"],
-    "portrait": ["face", "head", "selfie"],
-    "city": ["cityscape", "skyscraper", "buildings", "street"]
+    # Add your custom mappings here
 }
 
+def get_image_files_recursively(input_folder):
+    image_files = []
+    for root, _, files in os.walk(input_folder):
+        for file in files:
+            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')) and not file.startswith('.'):
+                image_files.append(os.path.join(root, file))
+    return image_files
 
 def classify_image(image_path, custom_mapping=None):
-    # Open and preprocess the image
     input_image = Image.open(image_path)
     input_tensor = preprocess(input_image)
     input_batch = input_tensor.unsqueeze(0)
 
-    # Perform the classification
+    if torch.cuda.is_available():
+        input_batch = input_batch.to('cuda')
+        model.to('cuda')
+
     with torch.no_grad():
         output = model(input_batch)
 
-    # Get probabilities using softmax
     probabilities = torch.nn.functional.softmax(output[0], dim=0)
+    top1_prob, top1_catid = torch.topk(probabilities, 1)
 
-    # Get the top predicted class label
-    _, predicted_label_index = torch.max(probabilities, 0)
-    predicted_label = categories[predicted_label_index.item()]
-
-    # If custom mapping is provided, map the predicted label to a custom label
     if custom_mapping:
-        for custom_label, keywords in custom_mapping.items():
-            if predicted_label.lower() in keywords:
-                return custom_label
-        return 'others'
+        return custom_mapping[categories[top1_catid[0]]], top1_prob[0].item()
+    else:
+        return categories[top1_catid[0]], top1_prob[0].item()
 
-    return predicted_label
+input_folder = 'photos/input'
+output_folder = 'photos/output'
 
+image_files = get_image_files_recursively(input_folder)
 
-labels_url = 'https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt'
-categories = [s.strip() for s in urllib.request.urlopen(labels_url).readlines()]
-categories = [category.decode("utf-8") for category in categories]
+for image_path in tqdm(image_files):
+    label, _ = classify_image(image_path)
+    dest_folder = os.path.join(output_folder, label)
 
+    if not os.path.exists(dest_folder):
+        os.makedirs(dest_folder)
 
-input_folder = "path/to/your/images"
-output_folder = "path/to/output/folder"
-
-# Loop through all image files
-for file in os.listdir(input_folder):
-    file_path = os.path.join(input_folder, file)
-
-    # Classify the image
-    label = classify_image(file_path)
-
-    # Create a folder for the label if it doesn't exist
-    label_folder = os.path.join(output_folder, label)
-    os.makedirs(label_folder, exist_ok=True)
-
-    # Move the image to the label folder
-    shutil.move(file_path, os.path.join(label_folder, file))
+    dest_path = os.path.join(dest_folder, os.path.basename(image_path))
+    os.rename(image_path, dest_path)
+    print(f'Moved {image_path} to {dest_path}')
