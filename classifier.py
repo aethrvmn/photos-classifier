@@ -1,7 +1,8 @@
 import os
 import urllib.request
 import shutil
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+
 from torchvision import transforms
 import torch
 from tqdm import tqdm
@@ -49,6 +50,7 @@ class ImageClassifier:
 
 
     def classify_image(self, image_path, input_image=None):
+
         if not input_image:
             with Image.open(image_path) as input_image:
                 input_image = self.convert_to_rgb(input_image)
@@ -113,10 +115,16 @@ class ImageClassifier:
             i += 1
 
 
+
     def convert_to_jpeg(self, image_path):
         file_ext = os.path.splitext(image_path)[1].lower()
 
-        input_image = Image.open(image_path)
+        try:
+            input_image = Image.open(image_path)
+        except UnidentifiedImageError:
+            print(f"Warning: Unidentified or corrupted image: {image_path}")
+            return None, None
+
         image_format = input_image.format.lower()
 
         if file_ext == '.jpg' and image_format == 'jpeg':
@@ -133,6 +141,7 @@ class ImageClassifier:
             return new_image_path, input_image
 
 
+
     def process_images(self, input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True):
         image_files = self.get_image_files_recursively(input_folder)
 
@@ -143,6 +152,9 @@ class ImageClassifier:
                 image_path, input_image = self.convert_to_jpeg(image_path)
             else:
                 input_image = Image.open(image_path)
+
+            if input_image is None:
+                continue
 
 
             label, _ = self.classify_image(image_path, input_image=input_image)
