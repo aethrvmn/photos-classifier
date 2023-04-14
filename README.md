@@ -1,11 +1,10 @@
-
 # Photo Classifier
 
 A Python-based command-line tool for organizing and managing a collection of images. This tool classifies images based on their content, checks for duplicates, and organizes them into folders according to their categories. It supports various image formats, such as PNG, JPEG, TIFF, BMP, and GIF.
 
 ## Features
 
--   Classify images using a pre-trained DenseNet-121 model
+-   Classify images using a pre-trained Vision Transformer model
 -   Organize images into folders based on their categories
 -   Check for and handle duplicate images
 -   Rename image files based on their categories
@@ -15,17 +14,17 @@ A Python-based command-line tool for organizing and managing a collection of ima
 ## Requirements
 
 -   Python 3.7+
--   `torch` and `torchvision` packages
--   `Pillow` package
--   `numpy` package
--   `scikit-image` package
--   `pyheif` package (optional, for HEIC image support)
--   `tqdm` package (optional, for progress bars)
+-   torch and torchvision packages
+-   Pillow package
+-   numpy package
+-   scikit-image package
+-   timm package
+-   tqdm package (optional, for progress bars)
 
-You can install the required packages using `pip`:
+You can install the required packages using pip:
 
 ```bash
-pip install torch torchvision Pillow numpy scikit-image pyheif tqdm
+pip install torch torchvision Pillow numpy scikit-image timm tqdm
 ```
 
 ## Usage
@@ -44,7 +43,8 @@ custom_labels = {
 }
 
 classifier = ImageClassifier(custom_mapping=custom_labels)
-classifier.process_images(input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True)
+classifier.process_images(input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True)
+
 ```
 
 You can customize the behavior of the `process_images` method using the following optional parameters:
@@ -74,7 +74,7 @@ custom_mapping = {
 classifier = ImageClassifier(custom_mapping=custom_mapping)
 ```
 
-With this custom mapping, the script will use the new category names instead of the original ones provided by the DenseNet-121 model.
+With this custom mapping, the script will use the new category names instead of the original ones providedby the Vision Transformer model.
 
 ## Troubleshooting
 
@@ -83,3 +83,26 @@ If you encounter issues related to SSL certificate verification, you can disable
 ```python
 classifier = ImageClassifier(ssl_unverified=True)
 ```
+
+## Code Overview
+
+The provided `classifier.py` script contains the `ImageClassifier` class that handles image classification, duplicate checking, and file management. The class uses a pre-trained Vision Transformer model from the `timm` package to classify images. It also utilizes the `Pillow` package for image processing and the `scikit-image` package for calculating image similarity.
+
+### Key Methods
+
+-   `__init__(self, ssl_unverified=False, custom_mapping=None)`: Initializes the `ImageClassifier` instance with optional SSL verification and custom category mapping.
+-   `classify_image(self, image_path, input_image=None)`: Classifies an image given its file path or an opened image instance.
+-   `calculate_image_similarity(self, img1, img2)`: Calculates the similarity between two images using the Structural Similarity Index (SSIM).
+-   `is_duplicate(self, image, output_folder, label, threshold=0.95)`: Checks if an image is a duplicate based on its similarity to existing images in the output folder.
+-   `process_images(self, input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True)`: Processes images in the input folder, classifies them, and organizes them in the output folder.
+
+### Additional Methods
+
+The class also contains several helper methods for image processing and file management, such as:
+
+-   `get_image_files_recursively(self, input_folder)`: Retrieves image files recursively from the input folder.
+-   `convert_to_rgb(self, image)`: Converts an image to the RGB color space.
+-   `get_next_filename(self, folder, prefix, ext)`: Generates the next available filename for an image based on its category.
+-   `convert_to_jpeg(self, image_path)`: Converts a non-JPEG image to JPEG format and deletes the original file.
+-   `open_image_with_warning(self, image_path)`: Opens an image file and warns if the image is unidentified or corrupted.
+-   `delete_empty_folders(self, input_folder)`: Recursively deletes empty folders in the input folder.
