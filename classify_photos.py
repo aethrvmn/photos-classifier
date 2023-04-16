@@ -1,8 +1,8 @@
 # image_classifier_usage.py
-from classifier import ImageClassifier
+from image_classifier import ImageClassifier
 
 input_folder = 'photos/input'
-output_folder = 'photos/output'
+output_folder = 'photos/photos'
 
 # Define your custom labels here
 custom_labels = {
