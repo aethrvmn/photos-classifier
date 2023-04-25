@@ -1,6 +1,7 @@
 import os
 import urllib.request
 import shutil
+import random
 from PIL import Image, UnidentifiedImageError
 from torchvision import transforms
 import torch
@@ -29,9 +30,11 @@ class ImageClassifier:
         self.custom_mapping = custom_mapping if custom_mapping else {}
 
     def get_image_files_recursively(self, input_folder):
-        return [os.path.join(root, file) for root, _, files in os.walk(input_folder) for file in files if
-            file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')) and not file.startswith('.')]
+        image_files = [os.path.join(root, file) for root, _, files in os.walk(input_folder) for file in files if
+                    file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')) and not file.startswith('.')]
 
+        random.shuffle(image_files)
+        return image_files
 
     def convert_to_rgb(self, image):
         return image.convert("RGB") if image.mode != "RGB" else image
