@@ -129,7 +129,6 @@ dmypy.json
 .pyre/
 
 # Photos Folder
-
-photos/
+media/
 
 .DS_Store

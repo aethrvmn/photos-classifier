@@ -1,4 +1,5 @@
 import os
+import re
 import urllib.request
 import shutil
 import random
@@ -55,13 +56,21 @@ class ImageClassifier:
         img2_preprocessed = self.preprocess(self.convert_to_rgb(img2)).mean(dim=0).numpy()
         return ssim(img1_preprocessed, img2_preprocessed, data_range=img1_preprocessed.max() - img1_preprocessed.min())
 
-    def is_duplicate(self, image, output_folder, label, threshold=0.95):
-        dest_folder = os.path.join(output_folder, label)
+    def is_duplicate(self, image, dest_folder, label, threshold=0.95):
         if not os.path.exists(dest_folder):
             return False
+
+        # Getting the dimensions of the input image
+        img_width, img_height = image.size
         for existing_file in os.listdir(dest_folder):
             if existing_file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')) and not existing_file.startswith('.'):
                 with Image.open(os.path.join(dest_folder, existing_file)) as existing_img:
+
+                    # Checking dimensions before doing any other operations
+                    existing_width, existing_height = existing_img.size
+                    if img_width != existing_width or img_height != existing_height:
+                        continue
+
                     if self.calculate_image_similarity(self.convert_to_rgb(image), self.convert_to_rgb(existing_img)) >= threshold:
                         return True
         return False
@@ -101,7 +110,7 @@ class ImageClassifier:
             return None
 
 
-    def process_images(self, input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True):
+    def process_images(self, input_folder, output_folder, classify=True, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_jpeg=True):
         image_files = self.get_image_files_recursively(input_folder)
 
         for image_path in tqdm(image_files):
@@ -113,12 +122,18 @@ class ImageClassifier:
             if input_image is None:
                 continue
 
-            label, _ = self.classify_image(image_path, input_image=input_image)
-            dest_folder = os.path.join(output_folder, label)
-            os.makedirs(dest_folder, exist_ok=True)
 
-            if check_duplicates and self.is_duplicate(input_image, output_folder, label):
-                print(f"Found duplicate: {image_path}")
+            if classify:
+                label, _ = self.classify_image(image_path, input_image=input_image)
+            else:
+                filename = image_path.split('/')[-1]
+                # Removing trailing numbers from filename
+                label = re.sub(r'\d+(?=\.[^.]+$)', '', filename)
+            dest_folder = os.path.join(output_folder, label.split('.')[0])
+
+            os.makedirs(dest_folder, exist_ok=True)
+            if check_duplicates and self.is_duplicate(input_image, dest_folder, label.split('.')[0]):
+                print(f"\nFound duplicate: {image_path}")
                 if delete_duplicates:
                     os.remove(image_path)
                     print(f"Deleted duplicate: {image_path}")
@@ -126,7 +141,7 @@ class ImageClassifier:
 
             if rename_files:
                 ext = os.path.splitext(image_path)[1].lower().lstrip('.')
-                new_filename = self.get_next_filename(dest_folder, label, ext)
+                new_filename = self.get_next_filename(dest_folder, label.split('.')[0], ext)
             else:
                 new_filename = os.path.basename(image_path)
 
@@ -137,7 +152,7 @@ class ImageClassifier:
             else:
                 shutil.copy2(image_path, dest_path)
 
-            print('\n', f'{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
+            print(f'\n{"Moved" if move_files else "Copied"} {image_path} to {dest_path}')
 
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)

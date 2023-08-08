@@ -6,16 +6,18 @@ import shutil
 import ssl
 import urllib
 import urllib.request
-
+import random
 import imagehash
 import numpy as np
 import torch
 import torchvision
 import torchvision.transforms.functional
 import moviepy
+import imageio
+import subprocess
 
 from PIL import Image
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 from tqdm import tqdm
 from torchvision.io import read_video
 from torchvision.transforms import Compose, Lambda
@@ -84,18 +86,15 @@ class VideoClassifier:
         indices = torch.clamp(indices, 0, t - 1).long()
         return torch.index_select(x, temporal_dim, indices)
 
-
     def classify_video(self, video_path, input_video=None):
-        if input_video is None:
-            start_frame = 0
-            end_frame = start_frame + (self.clip_duration * self.frame_rate)
-            video_data, _, _ = read_video(video_path, start_pts=start_frame, end_pts=end_frame, pts_unit='pts')
-        else:
-            start_sec = 0
-            end_sec = start_sec + self.clip_duration
-            video_data = input_video.subclip(start_sec, end_sec)
-            video_data = np.array(list(video_data.iter_frames()))
-            video_data = torch.from_numpy(video_data).permute(3, 0, 1, 2)  # Change tensor shape to (C, T, H, W)
+
+        frame_rate = input_video.fps
+        start_frame = 0
+        end_frame = int(self.clip_duration * frame_rate)
+        video_data = (input_video.get_frame(i / frame_rate) for i in range(start_frame, end_frame))
+            
+        video_data = np.stack(list(video_data), axis=0)  # Stack frames into a single array
+        video_data = torch.from_numpy(video_data).permute(3, 0, 1, 2)  # Change tensor shape to (C, T, H, W)
 
         video_data = self.transform({"video": video_data})
 
@@ -109,18 +108,18 @@ class VideoClassifier:
         top1_prob, top1_catid = torch.topk(probabilities, 1)
         top1_catid_int = top1_catid[0].item()
         category = self.custom_mapping.get(self.kinetics_id_to_classname[top1_catid_int], self.kinetics_id_to_classname[top1_catid_int])
+        input_video.close()
+
         return category, top1_prob.item()
 
 
-
-
     def video_similarity(self, video1_path, video2_path, frame_interval=1):
+        print(f"Comparing {video1_path} to {video2_path}")
         video1 = VideoFileClip(video1_path)
         video2 = VideoFileClip(video2_path)
 
         video1_frames = [Image.fromarray(frame) for i, frame in enumerate(video1.iter_frames()) if i % frame_interval == 0]
         video2_frames = [Image.fromarray(frame) for i, frame in enumerate(video2.iter_frames()) if i % frame_interval == 0]
-
 
         video1_hashes = [imagehash.phash(frame) for frame in video1_frames]
         video2_hashes = [imagehash.phash(frame) for frame in video2_frames]
@@ -139,7 +138,7 @@ class VideoClassifier:
 
 
     def convert_to_mp4(self, video_path):
-        input_video = moviepy.editor.VideoFileClip(video_path)
+        input_video = VideoFileClip(video_path)
         video_format = ffmpeg.probe(video_path)["streams"][0]["codec_name"]
 
         if video_format.lower() == 'h264':
@@ -151,27 +150,37 @@ class VideoClassifier:
 
             input_video.write_videofile(new_video_path, codec='libx264')
             input_video.close()
-            os.remove(video_path)
-            new_input_video = moviepy.editor.VideoFileClip(new_video_path)
+            new_input_video = VideoFileClip(new_video_path, 'ffmpeg')
             return new_video_path, new_input_video
 
 
-    def is_duplicate_video(self, video_path, output_folder, label, threshold=10):
+    def is_duplicate_video(self, video_path, output_folder, label, threshold=10, length_tolerance=0.1):
         dest_folder = os.path.join(output_folder, label)
         if not os.path.exists(dest_folder):
             return False
+
+        input_video_reader = VideoFileClip(video_path)
+        input_video_duration = input_video_reader.duration
+        input_video_frame_size = input_video_reader.size
+
         for existing_file in os.listdir(dest_folder):
             if existing_file.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.flv', '.wmv')) and not existing_file.startswith('.'):
                 existing_video_path = os.path.join(dest_folder, existing_file)
-                similarity = self.video_similarity(video_path, existing_video_path)
-                if similarity <= threshold:
-                    return True
+                existing_video_reader = VideoFileClip(existing_video_path)
+                existing_video_duration = existing_video_reader.duration
+                existing_video_frame_size = existing_video_reader.size
+
+                if (abs(input_video_duration - existing_video_duration) <= length_tolerance * input_video_duration) and (input_video_frame_size == existing_video_frame_size):
+                    similarity = self.video_similarity(video_path, existing_video_path)
+                    if similarity <= threshold:
+                        return True
+
         return False
 
 
     def open_video_with_warning(self, video_path):
         try:
-            return VideoFileClip(video_path)
+            return VideoFileClip(video_path, 'ffmpeg')
         except Exception as e:
             print(f"Warning: Unable to open video: {video_path}. Error: {str(e)}")
             return None
@@ -186,53 +195,66 @@ class VideoClassifier:
             i += 1
 
     def get_video_files_recursively(self, input_folder):
-        return [
-            os.path.join(root, file) for root, _, files in os.walk(input_folder)
-            for file in files if file.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.flv', '.wmv')) and not file.startswith('.')
-        ]
+
+        video_files = [ os.path.join(root, file) for root, _, files in os.walk(input_folder) for file in files if file.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.flv', '.wmv')) and not file.startswith('.')]
+        random.shuffle(video_files)
+        return video_files
 
 
-    def process_videos(self, input_folder, output_folder, rename_files=True, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_mp4=True):
+    def process_videos(self, input_folder, output_folder, check_duplicates=True, move_files=True, delete_duplicates=True, delete_empty_folders=True, convert_to_mp4=True, rename_files=True, min_duration = 5):
         video_files = self.get_video_files_recursively(input_folder)
 
         for video_path in tqdm(video_files):
-            if convert_to_mp4:
-                video_path, input_video = self.convert_to_mp4(video_path)
-            else:
-                input_video = self.open_video_with_warning(video_path)
+            try:
+                print(f"Started work on {video_path}...")
+                is_mp4 = video_path.lower().endswith('.mp4')
 
-            if input_video is None:
+                if convert_to_mp4:
+                    video_path, input_video = self.convert_to_mp4(video_path)
+                else:
+                    input_video = self.open_video_with_warning(video_path)
+
+                if input_video is None:
+                    continue
+                   
+                if input_video.duration < min_duration:
+                    print(f"Video {video_path} is too short ({input_video.duration:.2f}s), skipping")
+                    continue
+
+                label, _ = self.classify_video(video_path, input_video=input_video)
+                print(f"Classification of {video_path} complete")
+                input_video.close()
+                del input_video
+                dest_folder = os.path.join(output_folder, label)
+                os.makedirs(dest_folder, exist_ok=True)
+                print("Checking for duplicates...")
+                if check_duplicates and self.is_duplicate_video(video_path, output_folder, label):
+                    print(f"Found duplicate: {video_path}")
+                    if delete_duplicates:
+                        os.remove(video_path)
+                        print(f"Deleted duplicate: {video_path}")
+                    continue
+                else:
+                    print("No duplicates found")
+
+                if rename_files:
+                    ext = os.path.splitext(video_path)[1].lower().lstrip('.')
+                    new_filename = self.get_next_filename(dest_folder, label, ext)
+                else:
+                    new_filename = os.path.basename(video_path)
+
+                dest_path = os.path.join(dest_folder, new_filename)
+
+                if move_files:
+                    os.rename(video_path, dest_path)
+                else:
+                    shutil.copy2(video_path, dest_path)
+
+                print('\n', f'{"Moved" if move_files else "Copied"} {video_path} to {dest_path}')
+            except:
                 continue
-
-            label, _ = self.classify_video(video_path, input_video=input_video)
-            dest_folder = os.path.join(output_folder, label)
-            os.makedirs(dest_folder, exist_ok=True)
-
-            if check_duplicates and self.is_duplicate_video(video_path, output_folder, label):
-                print(f"Found duplicate: {video_path}")
-                if delete_duplicates:
-                    os.remove(video_path)
-                    print(f"Deleted duplicate: {video_path}")
-                continue
-
-            if rename_files:
-                ext = os.path.splitext(video_path)[1].lower().lstrip('.')
-                new_filename = self.get_next_filename(dest_folder, label, ext)
-            else:
-                new_filename = os.path.basename(video_path)
-
-            dest_path = os.path.join(dest_folder, new_filename)
-
-            if move_files:
-                os.rename(video_path, dest_path)
-            else:
-                shutil.copy2(video_path, dest_path)
-
-            print('\n', f'{"Moved" if move_files else "Copied"} {video_path} to {dest_path}')
-
         if delete_empty_folders:
             self.delete_empty_folders(input_folder)
-
 
     def delete_empty_folders(self, input_folder):
         for root, dirs, files in os.walk(input_folder, topdown=False):
